@@ -1,1 +1,10 @@
 .env
+/.eslintrc.json
+/.vscode
+/node_modules
+/public/config/bronze.json
+/public/config/diamond.json
+/public/config/gold.json
+/public/config/leisure.json
+/public/config/platinum.json
+/public/config/silver.json
