@@ -264,74 +264,83 @@ router.get(['/twinrinks/CalendarItem.ashx', '/CalendarItem.ashx'], function(req,
     }
 });
 
-//Legacy page just load main
-router.get(['/twinrinks/BGMobileSched.aspx', '/BGMobileSched.aspx'], function(req, res)
-{
-    LoadMain(req,res);
+// API endpoint to get main data for the React app
+router.get('/api/main-data', function(req, res) {
+    // This function will be adapted from the old LoadMain
+    // It will use eventEmitter and then res.json() the data
+    loadMainDataForApi(req, res);
 });
 
-// Display Main page 
-router.get('/', function(req, res) {
-    LoadMain(req, res);
-});    
-
 // Display the main page 
-function LoadMain(req, res)
+function loadMainDataForApi(req, res)
 {
-    let leagueID = 0;
-    tools.logData(`TR: Page host: ${req.headers.host}, URL: ${req.url}, Original URL: ${req.originalUrl}`, "DEBUG", req.socket.remoteAddress);
+    let leagueID = 0; // This might be relevant for client-side to know the default selected league index
+    tools.logData(`TR API: Page host: ${req.headers.host}, URL: ${req.url}, Original URL: ${req.originalUrl}`, "DEBUG", req.socket.remoteAddress);
+
     //Must register the listener BEFORE the emit method..
-    eventEmitter.once("ProcessComplete", function(teamList, gameList, error) 
+    eventEmitter.once("ProcessComplete", function(processedTeamList, processedGameList, errorMsg, selectedLeagueLabel, selectedTeamName, resolvedShowSubGames, resolvedUserID)
     {  
-        return res.render("index", { title: 'Twin Rinks Schedule', leagueList, teamList, team, gameList, league, showSubGames, UserID, error, leagueID });          
+        // The original leagueList is a global constant
+        return res.json({
+            leagueList: leagueList, // Send the global leagueList
+            teamList: processedTeamList,
+            gameList: processedGameList,
+            selectedLeague: selectedLeagueLabel,
+            selectedTeam: selectedTeamName,
+            showSubGames: resolvedShowSubGames, // This needs to be boolean true/false or undefined
+            userID: resolvedUserID,
+            error: errorMsg,
+            selectedLeagueID: leagueID // Send the derived leagueID
+        });
     });      
 
     //Read parameters if they exist store as cookies 
-    let league = req.cookies.BGLeague;
-    let team = req.cookies.BGTeam
-    let showSubGames;
+    let currentLeague = req.cookies.BGLeague;
+    let currentTeam = req.cookies.BGTeam;
+    let currentShowSubGames; // This should be boolean for JSON
     if (req.cookies.BGShowSubGames)
-        showSubGames = (req.cookies.BGShowSubGames == "true") ? "checked" : undefined;
-    let UserID = req.cookies.BGUserID;
+        currentShowSubGames = (req.cookies.BGShowSubGames === "true"); // Convert to boolean
+    let currentUserID = req.cookies.BGUserID;
 
     //If the league is selected grab it now
-    if (league != null)
+    if (currentLeague != null)
     {
         //Update cookie if it isn't already set
-        if (req.cookies.BGLeague != league)
-            res.cookie("BGLeague", league, {maxAge: standardExpires});
+        if (req.cookies.BGLeague != currentLeague)
+            res.cookie("BGLeague", currentLeague, {maxAge: standardExpires});
         //TODO: Change this to the draft date for the league
-        if ((team != null) && (req.cookies.BGTeam != team))
-            res.cookie("BGTeam", team, {maxAge: standardExpires});
+        if ((currentTeam != null) && (req.cookies.BGTeam != currentTeam))
+            res.cookie("BGTeam", currentTeam, {maxAge: standardExpires});
         
         //Match the league label and load the data when found.
         let loadTeamCheck = {};
         for(let i=0;i<leagueList.length;i++)
         {
             let item = leagueList[i];
-            if (league == item.label) {
-                leagueID = i;
+            if (currentLeague == item.label) {
+                leagueID = i; // leagueID is captured in the closure for ProcessComplete
                 loadTeamCheck = item;                
             }
         }
 
         //Log data before calling load teams
-        tools.logData(`TR: Loading data for league: ${league}, team(s): ${team}`, "INFO", req.socket.remoteAddress);
+        tools.logData(`TR API: Loading data for league: ${currentLeague}, team(s): ${currentTeam}`, "INFO", req.socket.remoteAddress);
 
         //If we have an object load the teams now
+        // Pass currentShowSubGames and currentUserID down so they can be emitted
         if (Object.keys(loadTeamCheck).length)
-            LoadTeams(req, loadTeamCheck, team);                     
+            LoadTeams(req, loadTeamCheck, currentTeam, currentShowSubGames, currentUserID);
     }
     else
     {
-        tools.logData(`TR: Twinrinks page loaded with no selections.`, "INFO", req.socket.remoteAddress);
-        leagueID = 0;
-        eventEmitter.emit("ProcessComplete", [], [], "No league selected.");
+        tools.logData(`TR API: Twinrinks page loaded with no selections.`, "INFO", req.socket.remoteAddress);
+        leagueID = 0; // leagueID is captured in the closure for ProcessComplete
+        eventEmitter.emit("ProcessComplete", [], [], "No league selected.", currentLeague, currentTeam, currentShowSubGames, currentUserID);
     }
 }
 
 //Load the data for a selected league (filter by team if provided)
-async function LoadTeams(req, league, teamName)
+async function LoadTeams(req, league, teamName, parentShowSubGames, parentUserID)
 {
     let teamList = [];    
     let myTeams = [];
@@ -559,12 +568,29 @@ async function LoadTeams(req, league, teamName)
         }
 
         //Signal we are done
-        eventEmitter.emit("ProcessComplete", teamList, teamGameList, error);
+        // Pass up the league label, teamName, and the BGShowSubGames and BGUserID that were actually used or determined within LoadTeams
+        eventEmitter.emit("ProcessComplete", teamList, teamGameList, error, league.label, teamName, BGShowSubGames, BGUserID);
         return;
     });
 
-    if ((teamName) && (BGUserID) && (BGPassword)) {
+    // BGShowSubGames and BGUserID here are from cookies or derived if not available from parent.
+    // If they were passed from parent (loadMainDataForApi), they reflect the initial cookie state.
+    // If LoadTeams is called from elsewhere, it would rely on its own cookie logic or passed params.
+    // For the /api/main-data flow, parentShowSubGames and parentUserID are the correct ones to use for LoadUserInfo
+    // if BGUserID (from cookie within LoadTeams) is not present.
+    // However, LoadUserInfo itself relies on BGUserID and BGPassword from cookies.
+    // The BGShowSubGames used by LoadUserInfo is also from cookies.
+
+    // The crucial part is what's *returned* in the API:
+    // - selectedLeague & selectedTeam should be what was used for the current data load (league.label, teamName)
+    // - showSubGames & userID should reflect the user's current settings from cookies (parentShowSubGames, parentUserID initially,
+    //   but if LoadTeams modifies them or reads fresh ones, those should be used).
+    // The `BGUserID` and `BGShowSubGames` determined at the start of `LoadTeams` (from cookies) are the ones used for data fetching.
+    // So these are the correct ones to emit.
+
+    if ((teamName) && (BGUserID) && (BGPassword)) { // BGUserID is from cookies within LoadTeams
         try {
+            // BGShowSubGames passed to LoadUserInfo is from cookies within LoadTeams
             LoadUserInfo(teamName, BGUserID, BGPassword, BGShowSubGames, req.socket.remoteAddress);
         }
         catch (err)
