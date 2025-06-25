@@ -1,0 +1,399 @@
+doctype html
+html
+  head
+    title Twin Rinks Schedule
+    meta(name="viewport" content="width=device-width, initial-scale=1")
+    meta(name="description" content="Buffalo Grove Twin Rinks Mens Adult Hockey League")
+    script(src="https://code.jquery.com/jquery-3.6.1.min.js" integrity="sha256-o88AwQnZB+VDvE9tvIXrMQaPlFFSUTR+nldQm1LuPXQ=" crossorigin="anonymous")
+    script(src="js/jquery.sumoselect.min.js")
+    link(href="css/sumoselect.min.css" rel="stylesheet")
+    link(href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css" rel="stylesheet")
+    script(src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js")
+    link(href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet")
+    
+    script.
+      function checkInPop(gameNode, gameCheckInStatus, gameDescription) {
+          
+          if (gameNode === "undefined") {
+            let postURL = "/twinrinks/gameLink";
+            if (window.location.href.includes("twinrinks") == false) 
+              postURL = "/gameLink";
+            $.post(postURL, { gameNode: null, checkIn: null }, function (link) {
+                  window.open(link);
+            });
+            return;
+          }
+          if (gameCheckInStatus === "Checked Out") {
+              M.toast({html: "Changing status after being checked out is not usually available."});
+              document.getElementById("checkOut").click();
+          } else {
+              document.getElementById("checkIn").click();
+          }
+          document.getElementById("gameDescription").textContent = "Game: " + gameDescription;
+          document.getElementById("checkInGameNode").value = gameNode;
+          const modal = document.getElementById('popCheckin');
+          const instance = M.Modal.getInstance(modal);
+          instance.open(); // Show the popup
+      }
+
+      function closePopup(popupId) {
+          const modal = document.getElementById(popupId);
+          const instance = M.Modal.getInstance(modal);
+          instance.close(); // Hide the popup
+      }
+
+      function showLoadingAndSubmit(form) {
+          // Close any open dropdowns
+          const dropdowns = document.querySelectorAll('.dropdown-content');
+          dropdowns.forEach(dropdown => {
+              dropdown.style.display = 'none'; // Hide the dropdown
+          });
+
+          // Show the loading GIF
+          $("#loadingGif").show();
+
+          // Submit the form
+          form.submit();
+      }
+
+      $(document).ready(function () {        
+
+        // Initialize the modal and select elements
+        $('.modal').modal(); // Initialize Materialize modals
+        $('#leagueSelection').formSelect(); // Initialize Materialize select elements leagueSelection
+
+        const myErrors = !{JSON.stringify(error)}; 
+        if (myErrors.length > 0)        
+          M.toast({ html: myErrors, classes: 'red' });
+
+        $("#lblTeamList").SumoSelect({ okCancelInMulti: true, placeholder: 'Select Teams', forceCustomRendering: true });
+        
+        $("#saveUser").click(function () {          
+          const user = $("#txtUserID").val();
+          const pass = $("#txtPassword").val();
+          const subs = $("#txtShowSubGames").is(":checked");
+
+          closePopup('popUserID'); // Hide the popup after processing
+          $("#loadingGif").show();
+          
+          let postURL = "/twinrinks/saveUser";
+          if (window.location.href.includes("twinrinks") == false) 
+            postURL = "/saveUser";
+          
+          $.post(postURL, { UserID: user, Password: pass, ShowSubGames: subs }, function (data) {
+              if (data === "success") {
+                  location.reload();
+              }
+              else {
+                 // Show the loading GIF
+                $("#loadingGif").hide();                
+                M.toast({ html: data, classes: 'red' });
+              }
+          });
+        });
+
+        $("#clearCookies").click(function () {    
+          const resetLeague = $("#txtResetCookies").is(":checked");
+          const resetUser = $("#txtResetUser").is(":checked");
+          
+          // Show the loading GIF
+          closePopup('popClearCookies'); // Hide the popup after processing
+          $("#loadingGif").show();
+          
+          let postURL = "/twinrinks/clearCookies";
+          if (window.location.href.includes("twinrinks") == false) 
+              postURL = "/clearCookies";
+          
+          $.post(postURL, { ResetLeague: resetLeague, ResetUser: resetUser }, function (data) {
+              if (data === "success") {
+                  location.reload();
+              }
+              else {
+                $("#loadingGif").hide();
+                closePopup('popClearCookies'); // Hide the popup after processing
+                M.toast({ html: data, classes: 'red' });
+              }
+          });                
+        });
+
+        $("#checkInSelect").click(function () {
+            const checkIn = $("#checkIn").is(":checked");
+            const gameNode = $("#checkInGameNode").val() + "i";
+            let games = [];
+
+            // Retrieve existing games and timestamp from sessionStorage
+            const storedGames = sessionStorage.getItem("games");
+            const storedTimestamp = sessionStorage.getItem("gamesTimestamp");
+
+            // Check if the timestamp has expired
+            if (storedTimestamp && new Date().getTime() > parseInt(storedTimestamp)) {
+                // Clear sessionStorage if the timestamp has expired
+                sessionStorage.removeItem("games");
+                sessionStorage.removeItem("gamesTimestamp");
+            } else if (storedGames) {
+                // Load games if the timestamp is still valid
+                games = JSON.parse(storedGames);
+            }
+
+            // Check if the gameNode already exists in the games array
+            const existingGame = games.find(game => game.gameNode === gameNode);
+
+            if (existingGame) {
+                // Update the checkIn value if the gameNode already exists
+                existingGame.checkIn = checkIn;
+            } else {
+                // Add a new entry if the gameNode does not exist
+                games.push({ gameNode: gameNode, checkIn: checkIn });
+            }
+
+            // Save the updated games array and a new timestamp to sessionStorage
+            sessionStorage.setItem("games", JSON.stringify(games));
+            sessionStorage.setItem("gamesTimestamp", (new Date().getTime() + 10 * 60 * 1000).toString()); // 10 minutes in the future
+
+            let postURL = "/twinrinks/gameLink";
+            if (window.location.href.includes("twinrinks") == false) 
+              postURL = "/gameLink";
+          
+            // Send the updated games array to the server
+            $.post(postURL, { games: games }, function (data) {
+                if (data === "success") {
+                    let img = $("#" + gameNode.replace("i", ""));
+                    let originalImg = img.attr("src");
+                    if (originalImg.includes("Sub")) {
+                      if (checkIn) {
+                        img.attr("src", "/img/Sub.png");
+                        img.attr("alt", "Sub Requested");
+                      } else {
+                        img.attr("src", "/img/SubUnknown.png");
+                        img.attr("alt", "Unknown");
+                      }                       
+                    } else {
+                        img.attr("src", "/img/" + (checkIn ? "In" : "Out") + ".png");
+                        img.attr("alt", checkIn ? "Checked In" : "Checked Out");
+                    }                   
+                    M.toast({ html: "Change may take up to 10 minutes to take effect." });
+                } else if (data.startsWith("http")) {
+                    window.open(data);
+                }
+            });
+
+            closePopup('popCheckin'); // Hide the popup after processing
+        });
+
+        $("#gotoTwinRinks").click(function () {
+            closePopup('popCheckin'); // Hide the popup after processing
+            
+            let postURL = "/twinrinks/gameLink";
+            if (window.location.href.includes("twinrinks") == false) 
+              postURL = "/gameLink";
+            $.post(postURL, { gameNode: null, checkIn: null }, function (link) {
+                window.open(link);
+            });
+            return;
+        });
+      });
+    style.
+      .card .card-title {
+          font-size: 18px;
+          font-weight: 700;
+          display: block;
+          margin: 0;
+          text-overflow: ellipsis;
+          overflow: hidden;
+          white-space: nowrap;
+      }
+      .card .card-content {
+          padding: 4px;
+      }
+      .btn {
+        margin-right: 5px; /* Add spacing around each button */
+      }    
+      .btn-small {
+        margin-right: 5px !important; /* Add spacing around each button */;
+      }  
+      .image-container {
+          display: flex;
+          align-items: center; /* Vertically center the image */
+          justify-content: center; /* Horizontally center the image (optional) */
+          position: relative; /* Ensure the image is positioned relative to its container */
+      }
+      .status-image {
+          max-height: 100px; /* Adjust the size of the image */
+          max-width: 100%; /* Ensure the image scales properly */
+          z-index: 1; /* Ensure the image is above the background but below the title */
+          cursor: pointer; /* Change cursor to pointer for clickable image */
+      }
+      .card-title {
+          position: relative; /* Allow the title to overlap the image */
+          z-index: 2; /* Ensure the title is above the image */
+          background: rgba(255, 255, 255, 0.8); /* Optional: Add a semi-transparent background for better readability */
+          padding: 0 5px; /* Optional: Add padding around the title */
+      }
+      .material-icons {
+        display:inline-flex;
+        vertical-align:top;
+      }
+      .card {
+        border-bottom: none; /* Remove the line at the bottom of the card */
+        margin-bottom: 0px; /* Optional: Add spacing between cards */
+      }
+      .card .card-content .card-title {
+        margin-bottom: 0px; /* Remove the space below the title */
+      }
+      .row {
+        margin-bottom: 8px; /* Remove the space below the row */
+      }
+      .select-wrapper * { transition: none !important; transform: none !important; }
+      @media (max-width: 600px) {
+        .btn-small {
+          padding: 0 8px; /* Reduce padding inside the buttons */
+          font-size: 12px; /* Reduce font size */
+        }
+        .row a {
+          margin-right: 3px; /* Reduce spacing between buttons */
+        }
+      }
+      .SumoSelect {
+        width: 100%;        
+      }
+      .SumoSelect>.CaptionCont {
+        border-top: none;
+        border-left: none;
+        border-right: none;
+        border-bottom: 1px solid #a4a4a4;
+        margin-left: 0px;
+      }
+      .SumoSelect.open>.CaptionCont, .SumoSelect:focus>.CaptionCont, .SumoSelect:hover>.CaptionCont {
+        box-shadow: none;
+        border-color: #7799d0;
+      }
+      .SelectBox {
+        padding: 5px 0px;
+      }
+      .input-field {
+        margin: 0px; /* Remove margin from input fields */
+      }
+
+  body
+    div.container
+      header(class="center-align")
+        h4 Twin Rinks Schedule
+
+      main
+        div.row
+          a(class="waves-effect waves-light btn-small grey modal-trigger" href="#popupNews") News
+            i(class="material-icons") info
+          a(class="waves-effect waves-light btn-small blue modal-trigger" href="#popUserID") Setup
+            i(class="material-icons") settings   
+          a(class="waves-effect waves-light btn-small red modal-trigger" href="#popClearCookies") Clear        
+            i(class="material-icons") delete
+          if team && team != "All Teams"
+            a(href='/twinrinks/CalendarItem.ashx?league=' + league + '&team=' + team target="_self" class="waves-effect waves-light btn-small green") #{team} 
+              i(class="material-icons") event
+
+        form(action='/twinrinks' method="POST")
+          label League Selection
+          div.input-field
+            select#leagueSelection(name="leagueSelection" onchange="showLoadingAndSubmit(this.form);")
+              each leagueItem in leagueList
+                option(value=leagueItem.value selected=(leagueItem.id == leagueID)) #{leagueItem.name}
+              
+          label Team List
+          div.input-field
+            select#lblTeamList(name="lblTeamList" multiple="multiple" onchange="showLoadingAndSubmit(this.form);")
+              each entry in teamList
+                option(value=entry.teamName selected=entry.selected) #{entry.teamName}
+
+        ul
+          each game in gameList
+            li.card
+              div.card-content.row               
+                span.card-title Date: #{game.gameDate}
+                table(style="border: none; width: 100%;") 
+                  tr 
+                    td(style="padding: 5px;")
+                      p 
+                        strong Home Team: 
+                        | #{game.home}
+                      p 
+                        strong Away Team: 
+                        | #{game.away}
+                      p 
+                        strong Rink: 
+                        | #{game.rink}
+                      p(class=game.teamOrSub) 
+                        strong Sub Info: 
+                        | #{game.SubInfo}
+                      a(href='/twinrinks/CalendarItem.ashx?gameDate=' + game.gameDate + "&home=" + game.home + "&away=" + game.away + "&rink=" + game.rink target="_self" class="blue-text text-darken-2") Add to calendar
+                    td(align="right" valign="middle" style="text-align: right; padding: 5px;")
+                      img(id=game.NodeName class="responsive-img status-image halfway-fab" src='/img/' + game.status + '.png' alt=game.displayText title=game.displayText onclick="checkInPop('" + game.NodeName + "','" + game.displayText +"','" + game.gameDate + "')")                    
+                
+      footer(class="center-align")
+        p This page is brought to you by Chuck Carlin
+
+      div#popupNews.modal
+        div.modal-content
+          h4 News
+          p New Look and feed!
+          p Page has been rewritten using more modern tools.
+          strong Now supports checking into multiple games without issues!
+          p The page is now responsive and should work on most devices.
+          p Cleaned up several first time loading issues.
+        div.modal-footer
+          a(class="modal-close waves-effect waves-green btn") Close
+
+      div#popUserID.modal
+        div.modal-content
+          h4 Account Info
+          div.input-field
+            input(type="email" id="txtUserID" value=UserID)
+            label(for="txtUserID") Username
+          div.input-field
+            input(type="password" id="txtPassword")
+            label(for="txtPassword") Password
+          div.input-field
+            label
+              input(type="checkbox" id="txtShowSubGames" checked=showSubGames)
+              span Show Sub Games
+        div.modal-footer
+          a(class="modal-close waves-effect waves-green btn-small grey") Cancel
+          a(id="saveUser" class="waves-effect waves-green btn-small blue") Save
+
+      div#popClearCookies.modal 
+        div.modal-content
+          h4 Reset your Settings
+          p This option is incase you are having issues with the page.
+          p It will clear specified settings and reset to the default.
+          p 
+            label
+              input(type="checkbox" id="txtResetCookies")
+              span Reset League and Team Info
+          p
+            label
+              input(type="checkbox" id="txtResetUser")
+              span Reset User Info          
+          p Are you sure you want to do this?          
+        div.modal-footer
+          a(class="modal-close waves-effect waves-green btn-small grey") Cancel
+          a(id="clearCookies" class="waves-effect waves-green btn-small red") Clear Settings 
+    
+      div#popCheckin.modal
+        div.modal-content
+          h4 Game Check In
+          p#gameDescription
+          input(type="hidden" id="checkInGameNode")
+          p
+            label
+              input(type="radio" id="checkIn" name="gameCheckIn")
+              span Check In
+            label
+              input(type="radio" id="checkOut" name="gameCheckIn")
+              span Check Out
+        div.modal-footer
+          a(id="gotoTwinRinks" class="waves-effect waves-green btn-small green") Twin
+            i(class="material-icons") open_in_new
+          a(class="modal-close waves-effect waves-green btn-small red") Cancel
+          a(id="checkInSelect" class="waves-effect waves-green btn-small blue") Save
+
+      div#loadingGif(style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;")
+        img(src="/img/nyi-animated.gif" alt="Please Wait")
