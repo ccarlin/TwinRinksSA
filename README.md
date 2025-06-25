@@ -1,6 +1,7 @@
-# My Express Pug App
+# TwinRinks Standalone Website
 
-This is a simple single-page website built using Express and Pug. The application serves a dynamic web page with a clean and modern design.
+This is a standalone version of m.ccarlin.com that can be used to view TwinRinks.com adult mens leagues schedules and
+also supports check-in/check-out of games as well as sub games support. 
 
 ## Project Structure
 
