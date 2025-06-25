@@ -39,12 +39,17 @@ To get started with this project, follow these steps:
    npm install
    ```
 
-3. **Run the application:**
+3. **Configure Environment Variables**
+   ```
+   copy .env.example to .env
+   set values in .env file
+   ```
+4. **Run the application:**
    ```
    npm start
    ```
 
-4. **Open your browser:**
+5. **Open your browser:**
    Navigate to `http://localhost:3000` to view the application.
 
 ## Dependencies

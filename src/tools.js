@@ -3,6 +3,7 @@ const path = require("path");
 const crypto = require("crypto");
 const net = require("net");
 const dotenv = require("dotenv");
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const myKey = process.env.MY_KEY;
 const IV = process.env.IV;
 
